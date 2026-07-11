@@ -12,8 +12,8 @@ import { createClient } from "@supabase/supabase-js";
 dotenv.config();
 
 // Initialize Supabase Client if keys are available
-const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
-const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || process.env.VITE_PUBLIC_SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
+const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY || process.env.VITE_PUBLIC_SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 const supabase = (supabaseUrl && supabaseKey) ? createClient(supabaseUrl, supabaseKey) : null;
 
 if (supabase) {
@@ -193,6 +193,24 @@ async function generateContentWithRetryAndFallback(
 }
 
 async function initializeDatabase() {
+  if (supabase) {
+    console.log("Supabase Client SDK aktif. Melewati inisialisasi tabel via pg pool.");
+    return;
+  }
+
+  const hasConfig = 
+    process.env.DATABASE_URL || 
+    process.env.SUPABASE_DATABASE_URL || 
+    process.env.POSTGRES_URL || 
+    process.env.POSTGRES_URL_NON_POOLING ||
+    process.env.POSTGRES_PRISMA_URL ||
+    process.env.SQL_HOST;
+
+  if (!hasConfig) {
+    console.log("Tidak ada konfigurasi database relasional (DATABASE_URL/SQL_HOST) yang ditemukan. Melewati inisialisasi tabel.");
+    return;
+  }
+
   try {
     console.log("Memulai inisialisasi tabel database (jika belum ada)...");
     await pool.query(`
@@ -251,7 +269,9 @@ async function ensureDatabase() {
 // Global middlewares
 app.use(async (req, res, next) => {
   try {
-    await ensureDatabase();
+    if (!supabase) {
+      await ensureDatabase();
+    }
   } catch (err) {
     console.error("Gagal memastikan database terinisialisasi:", err);
   }
@@ -260,9 +280,6 @@ app.use(async (req, res, next) => {
 
 app.use(express.json({ limit: "20mb" }));
 app.use(express.urlencoded({ limit: "20mb", extended: true }));
-
-async function startServer() {
-  const PORT = 3000;
 
   // --- DATABASE ROUTES (Directly on Supabase API Client / PostgreSQL) ---
 
@@ -1107,8 +1124,9 @@ Berikan analisis yang sangat terperinci, formal, bersahabat, dan taktis dalam ba
     }
   });
 
-  // Serve static assets or use Vite in dev mode
-  if (!process.env.VERCEL) {
+  // Serve static assets or use Vite in dev mode (hanya untuk environment non-Vercel seperti Cloud Run / Local)
+  async function runDevOrProdServer() {
+    const PORT = 3000;
     if (process.env.NODE_ENV !== "production") {
       const vite = await createViteServer({
         server: { middlewareMode: true },
@@ -1127,6 +1145,9 @@ Berikan analisis yang sangat terperinci, formal, bersahabat, dan taktis dalam ba
       console.log(`Server running on port ${PORT}`);
     });
   }
-}
 
-startServer();
+  if (!process.env.VERCEL) {
+    runDevOrProdServer().catch((err) => {
+      console.error("Gagal memulai server lokal:", err);
+    });
+  }

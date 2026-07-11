@@ -21,10 +21,13 @@ export const createPool = () => {
         // Validasi menggunakan parser URL bawaan Node.js
         const url = new URL(trimmed);
         console.log(`Database pool terinisialisasi menggunakan URL (host: ${url.hostname})`);
+        const isServerless = !!process.env.VERCEL;
         return new Pool({
           connectionString: trimmed,
           ssl: trimmed.includes("supabase.co") ? { rejectUnauthorized: false } : undefined,
           connectionTimeoutMillis: 15000,
+          max: isServerless ? 2 : 10, // Batasi jumlah koneksi pada serverless untuk mencegah tabrakan database
+          idleTimeoutMillis: isServerless ? 1000 : 30000, // Tutup koneksi idle lebih cepat di serverless
         });
       } else {
         console.warn("DATABASE_URL tidak menggunakan protokol postgres:// atau postgresql://");
