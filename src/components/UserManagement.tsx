@@ -1,8 +1,7 @@
 import React, { useState } from "react";
 import { UserProfile } from "../types";
 import { Search, UserCheck, Shield, Trash2, Users, AlertTriangle, Key } from "lucide-react";
-import { sendPasswordResetEmail } from "firebase/auth";
-import { auth } from "../firebase";
+import { supabase } from "../supabase";
 
 interface UserManagementProps {
   users: UserProfile[];
@@ -54,13 +53,13 @@ export default function UserManagement({ users, currentUser, onRefresh }: UserMa
 
     const newRole = targetUser.role === "admin" ? "petugas" : "admin";
     try {
-      const response = await fetch(`/api/users/${targetUser.uid}/role`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ role: newRole })
-      });
-      if (!response.ok) {
-        throw new Error("Gagal merubah peran dari server API SQL");
+      const { error: dbError } = await supabase
+        .from("users")
+        .update({ role: newRole })
+        .eq("uid", targetUser.uid);
+      
+      if (dbError) {
+        throw dbError;
       }
       setSuccessMsg(`Peran ${targetUser.name} berhasil diubah menjadi ${newRole.toUpperCase()}.`);
       if (onRefresh) onRefresh();
@@ -90,11 +89,13 @@ export default function UserManagement({ users, currentUser, onRefresh }: UserMa
     setSuccessMsg("");
 
     try {
-      const response = await fetch(`/api/users/${uid}`, {
-        method: "DELETE"
-      });
-      if (!response.ok) {
-        throw new Error("Gagal menghapus pengguna dari server API SQL");
+      const { error: dbError } = await supabase
+        .from("users")
+        .delete()
+        .eq("uid", uid);
+
+      if (dbError) {
+        throw dbError;
       }
       setSuccessMsg(`Akun ${name} berhasil dihapus dari database.`);
       setConfirmDeleteId(null);
@@ -111,14 +112,19 @@ export default function UserManagement({ users, currentUser, onRefresh }: UserMa
   };
 
   /**
-   * Mengirimkan instruksi pemulihan atur ulang kata sandi ke email pengguna target menggunakan Firebase Auth.
+   * Mengirimkan instruksi pemulihan atur ulang kata sandi ke email pengguna target menggunakan Supabase Auth.
    */
   const handleResetPassword = async (targetUser: UserProfile) => {
     setLoadingId(targetUser.uid);
     setError("");
     setSuccessMsg("");
     try {
-      await sendPasswordResetEmail(auth, targetUser.email);
+      const { error: resetError } = await supabase.auth.resetPasswordForEmail(targetUser.email, {
+        redirectTo: window.location.origin
+      });
+      if (resetError) {
+        throw resetError;
+      }
       setSuccessMsg(`Tautan atur ulang kata sandi berhasil dikirim ke email: ${targetUser.email}`);
       
       // Menghilangkan pesan sukses secara otomatis setelah 6 detik

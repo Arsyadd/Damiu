@@ -514,35 +514,11 @@ export default function HistoryAnalysis({ reports }: HistoryAnalysisProps) {
     setPhotoLoading(true);
     setPhotoError("");
     try {
-      let data;
-      try {
-        const response = await fetch("/api/analyze-gallon", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            image: photo,
-            mimeType: mimeType,
-            simulatedType: selectedSimType || undefined
-          })
-        });
-
-        if (!response.ok) {
-          throw new Error("Backend API not OK");
-        }
-
-        data = await response.json();
-        if (data.error) {
-          throw new Error(data.error);
-        }
-      } catch (backendErr) {
-        console.warn("Backend API photo analysis failed, trying direct client-side fallback:", backendErr);
-        const apiKey = getClientApiKey();
-        if (!apiKey) {
-          throw new Error("Gagal terhubung ke API backend, dan GEMINI_API_KEY tidak ditemukan di environment variable Vercel. Pastikan Anda telah memasang GEMINI_API_KEY di dashboard Vercel.");
-        }
-        data = await callGeminiAnalyzePhotoDirectly(photo, mimeType, apiKey);
+      const apiKey = getClientApiKey();
+      if (!apiKey) {
+        throw new Error("GEMINI_API_KEY tidak ditemukan di environment variable Vercel atau file .env. Pastikan Anda telah memasang GEMINI_API_KEY di dashboard Vercel.");
       }
-
+      const data = await callGeminiAnalyzePhotoDirectly(photo, mimeType, apiKey);
       setPhotoResult(data);
     } catch (err: any) {
       console.error(err);
@@ -677,51 +653,18 @@ export default function HistoryAnalysis({ reports }: HistoryAnalysisProps) {
 
   const currentAnalysis = aiAnalysis;
 
-  // Trigger Backend Historical Analysis
+  // Trigger Direct Client-Side Historical Analysis
   const handleAiAudit = async () => {
     if (reports.length === 0) return;
     setLoading(true);
     setError("");
     try {
-      let data;
-      try {
-        const response = await fetch("/api/dmaic", { // keep endpoint for simplicity but server handles prompt adaptively
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ productionData: reports })
-        });
-
-        if (!response.ok) {
-          throw new Error("Backend API not OK");
-        }
-
-        data = await response.json();
-        if (data.error) {
-          throw new Error(data.error);
-        }
-      } catch (backendErr) {
-        console.warn("Backend API failed, trying direct client-side fallback:", backendErr);
-        const apiKey = getClientApiKey();
-        if (!apiKey) {
-          throw new Error("Gagal terhubung ke API backend, dan GEMINI_API_KEY tidak ditemukan di environment variable Vercel. Pastikan Anda telah memasang GEMINI_API_KEY di dashboard Vercel.");
-        }
-        data = await callGeminiDmaicDirectly(reports, apiKey);
+      const apiKey = getClientApiKey();
+      if (!apiKey) {
+        throw new Error("GEMINI_API_KEY tidak ditemukan di environment variable Vercel atau file .env. Pastikan Anda telah memasang GEMINI_API_KEY di dashboard Vercel.");
       }
-
-      // Check if server returned DMAIC format, map it to our clean historical format gracefully
-      if (data.define && data.measure && data.analyze) {
-        setAiAnalysis({
-          trendSummary: `${data.define}\n\n${data.measure}`,
-          operatorAnalysis: data.analyze,
-          temporalPattern: `Pola yang Ditemukan:\n${data.measure}`,
-          actionableSteps: data.improve,
-          forecast: data.control,
-          source: data.source,
-          warning: data.warning
-        });
-      } else {
-        setAiAnalysis(data);
-      }
+      const data = await callGeminiDmaicDirectly(reports, apiKey);
+      setAiAnalysis(data);
     } catch (err: any) {
       console.error(err);
       setError(err.message || "Gagal menghasilkan analisis riwayat.");

@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useCallback } from "react";
-import { onAuthStateChanged, signOut } from "firebase/auth";
-import { auth } from "./firebase";
+import { supabase } from "./supabase";
 import { UserProfile, ProductionReport, ActivityLog } from "./types";
 
 // Import Komponen-Komponen
@@ -49,26 +48,106 @@ export default function App() {
   const [syncStatus, setSyncStatus] = useState<"idle" | "syncing" | "success" | "failed">("idle");
   const [lastSyncTime, setLastSyncTime] = useState<string | null>(null);
 
+  // 2. Sinkronisasi SQL-First: Memuat Laporan Produksi & Daftar Pengguna dari Supabase secara terstruktur
+  const loadAllData = useCallback(async () => {
+    if (!user) return;
+    try {
+      // Get production reports
+      const { data: reportsList, error: reportsError } = await supabase
+        .from("production_reports")
+        .select("*");
+
+      if (reportsError) {
+        throw reportsError;
+      }
+
+      const mappedReports: ProductionReport[] = (reportsList || []).map((r: any) => ({
+        id: r.id,
+        reportId: r.report_id ?? r.reportId,
+        date: r.date,
+        operator: r.operator,
+        operatorUid: r.operator_uid ?? r.operatorUid,
+        gallonsUsed: r.gallons_used ?? r.gallonsUsed ?? 0,
+        productionLiter: r.production_liter ?? r.productionLiter ?? 0,
+        wastedLiter: r.wasted_liter ?? r.wastedLiter ?? 0,
+        wastePercent: r.waste_percent ?? r.wastePercent ?? 0,
+        status: r.status,
+        approved: r.approved,
+        createdAt: r.created_at ?? r.createdAt
+      }));
+
+      mappedReports.sort((a: ProductionReport, b: ProductionReport) => {
+        const dateCompare = b.date.localeCompare(a.date);
+        if (dateCompare !== 0) return dateCompare;
+        const timeA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+        const timeB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+        return timeB - timeA;
+      });
+      setReports(mappedReports);
+
+      // Get users list
+      const { data: uList, error: usersError } = await supabase
+        .from("users")
+        .select("*");
+
+      if (usersError) {
+        throw usersError;
+      }
+
+      const mappedUsers: UserProfile[] = (uList || []).map((u: any) => ({
+        uid: u.uid,
+        name: u.name,
+        email: u.email,
+        role: u.role
+      }));
+
+      setUsersList(mappedUsers);
+      
+      const ops = mappedUsers
+        .filter((u: UserProfile) => u.role === "petugas")
+        .map((u: UserProfile) => ({ uid: u.uid, name: u.name }));
+      setAllOperators(ops);
+
+      // Get activity logs
+      const { data: logsList, error: logsError } = await supabase
+        .from("activity_logs")
+        .select("*")
+        .order("timestamp", { ascending: false })
+        .limit(100);
+
+      if (logsError) {
+        throw logsError;
+      }
+
+      const mappedLogs: ActivityLog[] = (logsList || []).map((l: any) => ({
+        id: l.id,
+        logId: l.log_id || l.logId,
+        timestamp: l.timestamp,
+        type: l.type,
+        message: l.message,
+        operator: l.operator,
+        operatorUid: l.operator_uid || l.operatorUid
+      }));
+      setActivityLogs(mappedLogs);
+
+    } catch (err) {
+      console.warn("Gagal memuat data dari Supabase client:", err);
+    }
+  }, [user]);
+
   // Fungsi sinkronisasi dua arah (Cloud SQL + Firestore) via REST API
   const triggerDatabaseSync = useCallback(async () => {
     setSyncStatus("syncing");
     try {
-      const [reportsRes, usersRes] = await Promise.all([
-        fetch("/api/reports"),
-        fetch("/api/users")
-      ]);
-      if (reportsRes.ok && usersRes.ok) {
-        setSyncStatus("success");
-        setLastSyncTime(new Date().toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit", second: "2-digit" }));
-        console.log("Database Sync: Cloud SQL & Firestore synchronized successfully.");
-      } else {
-        setSyncStatus("failed");
-      }
+      await loadAllData();
+      setSyncStatus("success");
+      setLastSyncTime(new Date().toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit", second: "2-digit" }));
+      console.log("Database Sync: Supabase client-side load completed successfully.");
     } catch (err) {
       console.warn("Gagal menyinkronkan database:", err);
       setSyncStatus("failed");
     }
-  }, []);
+  }, [loadAllData]);
   
   // State mencatat status panyusutan sidebar di desktop
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
@@ -95,92 +174,103 @@ export default function App() {
 
   // 1. Inisialisasi Autentikasi & Pengambilan Profil Pengguna dari database SQL Supabase
   useEffect(() => {
-    const unsubscribeAuth = onAuthStateChanged(auth, async (firebaseUser) => {
-      if (firebaseUser) {
-        const email = firebaseUser.email || "";
-        const defaultRole = isAdminEmail(email) ? ("admin" as const) : ("petugas" as const);
-        const defaultProfile: UserProfile = {
-          uid: firebaseUser.uid,
-          name: firebaseUser.displayName || email.split("@")[0] || "User",
-          email: email,
-          role: defaultRole
-        };
-
-        try {
-          // Ambil profil dari database Supabase melalui API backend
-          const res = await fetch(`/api/users/${firebaseUser.uid}`);
-          if (res.ok) {
-            const existingProfile = await res.json();
-            // Jika admin, pastikan role admin terjaga
-            if (isAdminEmail(email)) {
-              existingProfile.role = "admin";
-            }
-            setUser(existingProfile);
-          } else if (res.status === 404) {
-            // Jika pengguna baru belum terdaftar di database SQL, simpan profil default
-            setUser(defaultProfile);
-            await fetch("/api/users", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify(defaultProfile)
-            });
-          } else {
-            setUser(defaultProfile);
-          }
-        } catch (err) {
-          console.warn("Gagal memuat profil pengguna dari SQL, menggunakan fallback lokal:", err);
-          setUser(defaultProfile);
-        } finally {
-          setLoading(false);
-        }
-      } else {
+    const syncUserSession = async (sUser: any) => {
+      if (!sUser) {
         setUser(null);
         setLoading(false);
+        return;
       }
+
+      const email = sUser.email || "";
+      const defaultRole = isAdminEmail(email) ? ("admin" as const) : ("petugas" as const);
+      const displayName = sUser.user_metadata?.display_name || email.split("@")[0] || "User";
+      const defaultProfile: UserProfile = {
+        uid: sUser.id,
+        name: displayName,
+        email: email,
+        role: defaultRole
+      };
+
+      try {
+        // Cari user berdasarkan UID baru di database
+        const { data: dbUserByUid } = await supabase
+          .from("users")
+          .select("*")
+          .eq("uid", sUser.id)
+          .maybeSingle();
+
+        if (dbUserByUid) {
+          setUser({
+            uid: dbUserByUid.uid,
+            name: dbUserByUid.name || displayName,
+            email: dbUserByUid.email || email,
+            role: (isAdminEmail(email) ? "admin" : dbUserByUid.role) as "admin" | "petugas"
+          });
+        } else {
+          // Jika tidak ada dengan UID baru, cari berdasarkan EMAIL (mungkin user daftar ulang)
+          const { data: dbUserByEmail } = await supabase
+            .from("users")
+            .select("*")
+            .eq("email", email)
+            .maybeSingle();
+
+          if (dbUserByEmail) {
+            const oldUid = dbUserByEmail.uid;
+            const newUid = sUser.id;
+
+            console.log(`Menyinkronkan ulang UID baru untuk ${email}. Mengubah ${oldUid} ke ${newUid}`);
+
+            // Update UID di tabel users
+            await supabase
+              .from("users")
+              .update({ uid: newUid })
+              .eq("id", dbUserByEmail.id);
+
+            // Migrasikan laporan produksi lama ke UID baru
+            await supabase
+              .from("production_reports")
+              .update({ operator_uid: newUid })
+              .eq("operator_uid", oldUid);
+
+            // Migrasikan activity_logs ke UID baru
+            await supabase
+              .from("activity_logs")
+              .update({ operator_uid: newUid })
+              .eq("operator_uid", oldUid);
+
+            setUser({
+              uid: newUid,
+              name: dbUserByEmail.name || displayName,
+              email: email,
+              role: (isAdminEmail(email) ? "admin" : dbUserByEmail.role) as "admin" | "petugas"
+            });
+          } else {
+            // Jika benar-benar baru, simpan profil default
+            setUser(defaultProfile);
+            await supabase.from("users").insert([defaultProfile]);
+          }
+        }
+      } catch (err) {
+        console.warn("Gagal menyinkronkan profil pengguna, menggunakan fallback lokal:", err);
+        setUser(defaultProfile);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    // Check current session
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      syncUserSession(session?.user);
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      syncUserSession(session?.user);
     });
 
     return () => {
-      unsubscribeAuth();
+      subscription.unsubscribe();
     };
   }, []);
-
-  // 2. Sinkronisasi SQL-First: Memuat Laporan Produksi & Daftar Pengguna dari Cloud SQL API secara terstruktur
-  const loadAllData = useCallback(async () => {
-    if (!user) return;
-    try {
-      const [reportsRes, usersRes, logsRes] = await Promise.all([
-        fetch("/api/reports"),
-        fetch("/api/users"),
-        fetch("/api/logs").catch(() => null)
-      ]);
-      if (reportsRes.ok) {
-        const reportsList = await reportsRes.json();
-        reportsList.sort((a: ProductionReport, b: ProductionReport) => {
-          const dateCompare = b.date.localeCompare(a.date);
-          if (dateCompare !== 0) return dateCompare;
-          const timeA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
-          const timeB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
-          return timeB - timeA;
-        });
-        setReports(reportsList);
-      }
-      if (usersRes.ok) {
-        const uList = await usersRes.json();
-        setUsersList(uList);
-        
-        const ops = uList
-          .filter((u: UserProfile) => u.role === "petugas")
-          .map((u: UserProfile) => ({ uid: u.uid, name: u.name }));
-         setAllOperators(ops);
-      }
-      if (logsRes && logsRes.ok) {
-        const logsList = await logsRes.json();
-        setActivityLogs(logsList);
-      }
-    } catch (err) {
-      console.warn("Gagal memuat data dari SQL API server:", err);
-    }
-  }, [user]);
 
   useEffect(() => {
     if (!user) return;
@@ -199,7 +289,7 @@ export default function App() {
   // 4. Menangani Logout Sesi Aktif
   const handleLogout = useCallback(async () => {
     try {
-      await signOut(auth);
+      await supabase.auth.signOut();
     } catch (e) {
       console.warn("SignOut gagal:", e);
     }
@@ -220,71 +310,154 @@ export default function App() {
     status: "Aman" | "Warning" | "Kritis";
   }) => {
     const reportId = reportToEdit ? reportToEdit.reportId : `report-${Date.now()}`;
-    const newReport: ProductionReport = {
-      ...reportData,
-      reportId,
-      approved: true, // Langsung disetujui / langsung masuk tanpa persetujuan admin
-      createdAt: reportToEdit ? reportToEdit.createdAt : new Date().toISOString()
+    const newReport = {
+      report_id: reportId,
+      date: reportData.date,
+      operator: reportData.operator,
+      operator_uid: reportToEdit 
+        ? reportToEdit.operatorUid 
+        : (user?.role === "admin" ? user.uid : reportData.operatorUid),
+      gallons_used: reportData.gallonsUsed,
+      production_liter: reportData.productionLiter,
+      wasted_liter: reportData.wastedLiter,
+      waste_percent: reportData.wastePercent,
+      status: reportData.status,
+      approved: reportToEdit ? reportToEdit.approved : (user?.role === "admin"),
+      created_at: reportToEdit ? reportToEdit.createdAt : new Date().toISOString()
     };
 
     try {
-      const response = await fetch("/api/reports", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(newReport)
-      });
-      if (response.ok) {
-        await loadAllData();
+      let dbError;
+      if (reportToEdit) {
+        const { error } = await supabase
+          .from("production_reports")
+          .update(newReport)
+          .eq("report_id", reportId);
+        dbError = error;
+      } else {
+        const { error } = await supabase
+          .from("production_reports")
+          .insert([newReport]);
+        dbError = error;
       }
+
+      if (dbError) {
+        throw dbError;
+      }
+
+      // Log the activity to activity_logs
+      const logId = `log-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+      const newLog = {
+        log_id: logId,
+        timestamp: new Date().toISOString(),
+        type: reportToEdit ? "SUNTING_LAPORAN" : "LAPORAN_BARU",
+        message: reportToEdit 
+          ? `Laporan ${reportId} berhasil diubah oleh ${user?.name || reportData.operator}.` 
+          : `Laporan produksi baru ditambahkan oleh ${user?.name || reportData.operator} (${reportData.gallonsUsed} Galon).`,
+        operator: user?.name || reportData.operator,
+        operator_uid: user?.uid || reportData.operatorUid
+      };
+
+      await supabase.from("activity_logs").insert([newLog]);
+      await loadAllData();
+
+      setReportToEdit(null);
+      setActiveTab("riwayat");
     } catch (err) {
       console.error("Gagal menyimpan laporan:", err);
+      throw err;
     }
-
-    setReportToEdit(null);
-    setActiveTab("riwayat");
   }, [reportToEdit, user, loadAllData]);
 
   // 6. Menyetujui Laporan Produksi (Administrator Only)
   const handleApproveReport = useCallback(async (reportId: string) => {
     try {
-      const response = await fetch(`/api/reports/${reportId}/approve`, {
-        method: "PUT"
-      });
-      if (response.ok) {
-        await loadAllData();
+      const { error } = await supabase
+        .from("production_reports")
+        .update({ approved: true })
+        .eq("report_id", reportId);
+
+      if (error) {
+        throw error;
       }
+
+      // Log approval
+      const logId = `log-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+      const newLog = {
+        log_id: logId,
+        timestamp: new Date().toISOString(),
+        type: "PERSETUJUAN_LAPORAN",
+        message: `Laporan ${reportId} disetujui oleh Administrator (${user?.name}).`,
+        operator: user?.name || "Admin",
+        operator_uid: user?.uid
+      };
+      await supabase.from("activity_logs").insert([newLog]);
+
+      await loadAllData();
     } catch (err) {
       console.error("Gagal menyetujui laporan:", err);
     }
-  }, [loadAllData]);
+  }, [loadAllData, user]);
 
   // 7. Menghapus Satu Laporan Produksi (Administrator Only)
   const handleReportDelete = useCallback(async (reportId: string) => {
     try {
-      const response = await fetch(`/api/reports/${reportId}`, {
-        method: "DELETE"
-      });
-      if (response.ok) {
-        await loadAllData();
+      const { error } = await supabase
+        .from("production_reports")
+        .delete()
+        .eq("report_id", reportId);
+
+      if (error) {
+        throw error;
       }
+
+      // Log deletion
+      const logId = `log-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+      const newLog = {
+        log_id: logId,
+        timestamp: new Date().toISOString(),
+        type: "PENGHAPUSAN_LAPORAN",
+        message: `Laporan ${reportId} dihapus oleh Administrator (${user?.name}).`,
+        operator: user?.name || "Admin",
+        operator_uid: user?.uid
+      };
+      await supabase.from("activity_logs").insert([newLog]);
+
+      await loadAllData();
     } catch (err) {
       console.error("Gagal menghapus laporan:", err);
     }
-  }, [loadAllData]);
+  }, [loadAllData, user]);
 
   // 7b. Reset Seluruh Laporan Produksi (Administrator Only)
   const handleResetAllReports = useCallback(async () => {
     try {
-      const response = await fetch("/api/reports/reset", {
-        method: "POST"
-      });
-      if (response.ok) {
-        await loadAllData();
+      const { error } = await supabase
+        .from("production_reports")
+        .delete()
+        .neq("report_id", "placeholder");
+
+      if (error) {
+        throw error;
       }
+
+      // Log reset
+      const logId = `log-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+      const newLog = {
+        log_id: logId,
+        timestamp: new Date().toISOString(),
+        type: "RESET_DATABASE",
+        message: `Seluruh data laporan produksi telah diclear oleh Administrator (${user?.name}).`,
+        operator: user?.name || "Admin",
+        operator_uid: user?.uid
+      };
+      await supabase.from("activity_logs").insert([newLog]);
+
+      await loadAllData();
     } catch (err) {
       console.error("Gagal mereset laporan:", err);
     }
-  }, [loadAllData]);
+  }, [loadAllData, user]);
 
   // 8. Mulai Proses Penyuntingan (Editing) Laporan
   const handleStartEdit = useCallback((report: ProductionReport) => {

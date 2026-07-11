@@ -1,6 +1,5 @@
 import React, { useState } from "react";
-import { signInWithEmailAndPassword, createUserWithEmailAndPassword, GoogleAuthProvider, signInWithPopup, updateProfile } from "firebase/auth";
-import { auth } from "../firebase";
+import { supabase } from "../supabase";
 import { Droplet, Lock, Mail, User, AlertCircle } from "lucide-react";
 
 interface AuthScreenProps {
@@ -29,7 +28,7 @@ export default function AuthScreen({ onLocalLogin }: AuthScreenProps) {
   const [name, setName] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [authInstructionType, setAuthInstructionType] = useState<"email" | "google" | null>(null);
+  const [authInstructionType, setAuthInstructionType] = useState<"email" | null>(null);
 
   /**
    * Mengatur masuk log atau pendaftaran menggunakan email dan password.
@@ -42,44 +41,71 @@ export default function AuthScreen({ onLocalLogin }: AuthScreenProps) {
 
     try {
       if (isSignUp) {
-        // Daftar Akun Baru (Khusus petugas lapangan DAMIU) menggunakan Firebase Auth
-        const userCred = await createUserWithEmailAndPassword(auth, email, password);
-        const uid = userCred.user.uid;
-        
-        try {
-          await updateProfile(userCred.user, { displayName: name || "Petugas Baru" });
-        } catch (profileErr) {
-          console.warn("Penyimpanan nama tampilan auth gagal:", profileErr);
+        // Daftar Akun Baru (Khusus petugas lapangan DAMIU) menggunakan Supabase Auth
+        const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
+          email,
+          password,
+          options: {
+            data: {
+              display_name: name || "Petugas Baru"
+            }
+          }
+        });
+
+        if (signUpError) {
+          throw signUpError;
         }
 
+        const sUser = signUpData.user;
+        if (!sUser) {
+          throw new Error("Pendaftaran gagal. Silakan coba lagi.");
+        }
+
+        const uid = sUser.id;
         const role = isAdminEmail(email) ? ("admin" as const) : ("petugas" as const);
         const profile = { uid, name: name || "Petugas Baru", email, role };
         
         try {
-          await fetch("/api/users", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(profile)
-          });
+          await supabase.from("users").upsert([profile]);
         } catch (dbErr) {
-          console.warn("Penyimpanan profil diabaikan saat offline:", dbErr);
+          console.warn("Penyimpanan profil gagal:", dbErr);
         }
 
         onLocalLogin(profile);
       } else {
-        // Masuk Akun menggunakan Firebase Auth
-        const userCred = await signInWithEmailAndPassword(auth, email, password);
-        const uid = userCred.user.uid;
-        
+        // Masuk Akun menggunakan Supabase Auth
+        const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
+          email,
+          password
+        });
+
+        if (signInError) {
+          throw signInError;
+        }
+
+        const sUser = signInData.user;
+        if (!sUser) {
+          throw new Error("Pengguna tidak ditemukan.");
+        }
+
+        const uid = sUser.id;
         let role: "admin" | "petugas" = isAdminEmail(email) ? "admin" : "petugas";
-        let existingName = email.split("@")[0];
+        let existingName = sUser.user_metadata?.display_name || email.split("@")[0];
 
         try {
-          const res = await fetch(`/api/users/${uid}`);
-          if (res.ok) {
-            const dataProfile = await res.json();
-            if (dataProfile.role) role = dataProfile.role as "admin" | "petugas";
-            if (dataProfile.name) existingName = dataProfile.name;
+          const { data: dbUser } = await supabase
+            .from("users")
+            .select("*")
+            .eq("uid", uid)
+            .single();
+
+          if (dbUser) {
+            if (dbUser.role) role = dbUser.role as "admin" | "petugas";
+            if (dbUser.name) existingName = dbUser.name;
+          } else {
+            // Create user entry in db on first login if not exists
+            const profile = { uid, name: existingName, email, role };
+            await supabase.from("users").insert([profile]);
           }
         } catch (e) {
           console.warn("Gagal membaca peran pengguna saat login:", e);
@@ -95,95 +121,34 @@ export default function AuthScreen({ onLocalLogin }: AuthScreenProps) {
       }
     } catch (err: any) {
       console.error(err);
-      const errCode = err.code || "";
       const errMsg = (err.message || "").toLowerCase();
       
-      // Penerjemahan Kode Error Firebase Auth ke Bahasa Indonesia yang Sederhana (Pesanan User)
-      if (errCode === "auth/operation-not-allowed") {
-        setAuthInstructionType("email");
-        setError("Autentikasi Email/Password belum diaktifkan di Firebase Console.");
-      } else if (errCode === "auth/network-request-failed") {
+      if (errMsg.includes("network") || errMsg.includes("fetch")) {
         setError("Koneksi jaringan gagal. Menggunakan login demo lokal...");
         setTimeout(() => {
           handleBypassLogin();
         }, 1500);
       } else if (isSignUp) {
-        if (errCode === "auth/email-already-in-use") {
+        if (errMsg.includes("already registered") || errMsg.includes("already in use")) {
           setError("Email sudah terdaftar. Silakan gunakan email lain atau langsung masuk.");
-        } else if (errCode === "auth/weak-password") {
+        } else if (errMsg.includes("weak") || errMsg.includes("should be at least")) {
           setError("Password terlalu lemah. Harap gunakan minimal 6 karakter.");
-        } else if (errCode === "auth/invalid-email") {
+        } else if (errMsg.includes("invalid email") || errMsg.includes("invalid-email")) {
           setError("Format email tidak valid. Harap periksa kembali.");
         } else {
           setError(`Gagal mendaftar: ${err.message || "Harap coba lagi atau hubungi admin."}`);
         }
       } else if (
-        errCode === "auth/invalid-credential" || 
-        errCode === "auth/wrong-password" || 
-        errCode === "auth/user-not-found" || 
-        errCode === "auth/invalid-email" ||
-        errMsg.includes("invalid-credential") ||
-        errMsg.includes("wrong-password") ||
-        errMsg.includes("invalid_credential")
+        errMsg.includes("invalid credential") || 
+        errMsg.includes("wrong password") || 
+        errMsg.includes("user not found") || 
+        errMsg.includes("invalid_credentials") ||
+        errMsg.includes("invalid-email") ||
+        errMsg.includes("invalid login credentials")
       ) {
-        setError("Password salah atau email tidak valid. Silakan periksa kembali.");
+        setError("Kredensial login salah (Invalid login credentials). Silakan periksa kembali.");
       } else {
         setError("Gagal masuk. Password salah atau email tidak terdaftar. Silakan hubungi admin.");
-      }
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  /**
-   * Mengatur masuk log instan menggunakan Google Auth.
-   */
-  const handleGoogleLogin = async () => {
-    setLoading(true);
-    setError("");
-    setAuthInstructionType(null);
-    try {
-      const provider = new GoogleAuthProvider();
-      const result = await signInWithPopup(auth, provider);
-      const firebaseUser = result.user;
-      const userEmail = firebaseUser.email || "";
-      
-      let role: "admin" | "petugas" = isAdminEmail(userEmail) ? "admin" : "petugas";
-      let existingName = firebaseUser.displayName || userEmail.split("@")[0] || "User";
-
-      try {
-        const res = await fetch(`/api/users/${firebaseUser.uid}`);
-        if (res.ok) {
-          const dataProfile = await res.json();
-          if (dataProfile.role) role = dataProfile.role as "admin" | "petugas";
-          if (dataProfile.name) existingName = dataProfile.name;
-        } else if (res.status === 404) {
-          const profile = { uid: firebaseUser.uid, name: existingName, email: userEmail, role };
-          await fetch("/api/users", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(profile)
-          });
-        }
-      } catch (e) {
-        console.warn("Gagal sinkronisasi user Google:", e);
-      }
-
-      const profile = {
-        uid: firebaseUser.uid,
-        name: existingName,
-        email: userEmail,
-        role: role
-      };
-      onLocalLogin(profile);
-    } catch (err: any) {
-      console.error(err);
-      const errMsg = (err.message || "").toLowerCase();
-      if (errMsg.includes("operation-not-allowed") || errMsg.includes("not-enabled") || errMsg.includes("provider is not enabled")) {
-        setError("Login Google belum diaktifkan di Firebase Console Anda.");
-        setAuthInstructionType("google");
-      } else {
-        setError("Gagal masuk menggunakan akun Google.");
       }
     } finally {
       setLoading(false);
@@ -279,28 +244,7 @@ export default function AuthScreen({ onLocalLogin }: AuthScreenProps) {
                 </div>
               )}
 
-              {authInstructionType === "google" && (
-                <div className="mt-2.5 p-3 bg-slate-900/80 border border-slate-700/50 rounded-lg space-y-2.5 text-[11px] text-slate-300">
-                  <p className="font-bold text-amber-400 uppercase tracking-wider text-[9px]">💡 Cara Mengaktifkan Google Login di Firebase:</p>
-                  <ol className="list-decimal list-inside space-y-1 font-sans text-slate-400">
-                    <li>Buka <a href="https://console.firebase.google.com/" target="_blank" rel="noopener noreferrer" className="text-teal-400 hover:underline font-semibold">Firebase Console</a></li>
-                    <li>Navigasi ke menu <span className="font-semibold text-white">Authentication</span> &gt; <span className="font-semibold text-white">Sign-in method</span></li>
-                    <li>Klik <span className="font-bold text-white">Add new provider</span> lalu pilih <span className="font-bold text-white">Google</span></li>
-                    <li>Aktifkan toggle <span className="text-teal-400 font-semibold">Enable</span></li>
-                    <li>Pilih email dukungan proyek lalu klik <span className="font-bold text-teal-400">Save</span></li>
-                  </ol>
-                  <div className="pt-2 border-t border-slate-800 flex justify-between items-center gap-2">
-                    <span className="text-[10px] text-slate-500 font-medium leading-tight">Mencoba demo langsung tanpa konfigurasi?</span>
-                    <button
-                      type="button"
-                      onClick={handleBypassLogin}
-                      className="py-1 px-2.5 bg-teal-500 hover:bg-teal-600 text-slate-950 font-bold rounded text-[10px] transition-colors shrink-0"
-                    >
-                      Bypass & Masuk Demo
-                    </button>
-                  </div>
-                </div>
-              )}
+
             </div>
           )}
 
@@ -361,21 +305,7 @@ export default function AuthScreen({ onLocalLogin }: AuthScreenProps) {
             </button>
           </form>
 
-          <div className="relative flex py-4 items-center">
-            <div className="flex-grow border-t border-slate-700/50"></div>
-            <span className="flex-shrink mx-4 text-slate-500 text-xs font-medium font-mono uppercase tracking-wider">atau</span>
-            <div className="flex-grow border-t border-slate-700/50"></div>
-          </div>
 
-          {/* Tombol masuk Google - Berdasarkan permintaan, sama sekali tidak menggunakan ikon */}
-          <button
-            type="button"
-            onClick={handleGoogleLogin}
-            disabled={loading}
-            className="w-full flex items-center justify-center bg-slate-900 hover:bg-slate-950 text-white font-semibold text-sm py-2.5 px-4 rounded-lg border border-slate-700/80 transition-all focus:outline-none focus:border-teal-500 shadow-md disabled:opacity-50 cursor-pointer"
-          >
-            {loading ? "Memproses..." : "Masuk dengan Google"}
-          </button>
 
           <div className="mt-4 text-center">
             <button
