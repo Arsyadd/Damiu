@@ -1,0 +1,64 @@
+{
+  "entities": {
+    "User": {
+      "title": "User Profile",
+      "description": "User profile containing roles and identification info",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "name": { "type": "string" },
+        "email": { "type": "string" },
+        "role": { "type": "string", "enum": ["admin", "petugas"] }
+      },
+      "required": ["uid", "name", "email", "role"]
+    },
+    "ProductionReport": {
+      "title": "Production Report",
+      "description": "Daily production and water waste reports logged by operators",
+      "type": "object",
+      "properties": {
+        "reportId": { "type": "string" },
+        "date": { "type": "string", "format": "date" },
+        "operator": { "type": "string" },
+        "operatorUid": { "type": "string" },
+        "gallonsUsed": { "type": "number" },
+        "productionLiter": { "type": "number" },
+        "wastedLiter": { "type": "number" },
+        "wastePercent": { "type": "number" },
+        "status": { "type": "string", "enum": ["Aman", "Warning", "Kritis"] },
+        "approved": { "type": "boolean" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["reportId", "date", "operator", "operatorUid", "gallonsUsed", "productionLiter", "wastedLiter", "wastePercent", "status", "approved"]
+    },
+    "DmaicReport": {
+      "title": "DMAIC Report",
+      "description": "Generated DMAIC analysis report targeting water waste optimization",
+      "type": "object",
+      "properties": {
+        "dmaicId": { "type": "string" },
+        "define": { "type": "string" },
+        "measure": { "type": "string" },
+        "analyze": { "type": "string" },
+        "improve": { "type": "string" },
+        "control": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["dmaicId", "define", "measure", "analyze", "improve", "control", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/users/{uid}": {
+      "schema": "User",
+      "description": "User profiles"
+    },
+    "/production_reports/{reportId}": {
+      "schema": "ProductionReport",
+      "description": "Production logs containing gallons used, production water volume, and wasted water volume"
+    },
+    "/dmaic_reports/{dmaicId}": {
+      "schema": "DmaicReport",
+      "description": "Historical records of DMAIC analysis generated on production logs"
+    }
+  }
+}

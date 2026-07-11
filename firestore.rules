@@ -1,0 +1,47 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Helper function to check if the user is authenticated
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // Helper function to check if user is accessing their own document
+    function isOwner(uid) {
+      return isAuthenticated() && request.auth.uid == uid;
+    }
+
+    // Helper function to check if user is admin
+    // We will verify the user's role by looking at their document in `/users`
+    function isAdmin() {
+      return isAuthenticated() && 
+        (request.auth.token.email == "arsdsatu@gmail.com" ||
+         request.auth.token.email == "mhammdarsyad79@gmail.com" ||
+         (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == "admin"));
+    }
+
+    // Users Collection rules
+    match /users/{uid} {
+      allow read: if isAuthenticated();
+      allow create, update: if isAuthenticated();
+      allow delete: if isAdmin();
+    }
+
+    // Production Reports Collection rules
+    match /production_reports/{reportId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated();
+      // Operators can edit their own report if it is not yet approved
+      allow update: if isAdmin() || (isAuthenticated() && resource.data.operatorUid == request.auth.uid && resource.data.approved == false);
+      allow delete: if isAdmin();
+    }
+
+    // DMAIC Reports Collection rules
+    match /dmaic_reports/{dmaicId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated(); // Allow generating/updating analysis
+    }
+  }
+}

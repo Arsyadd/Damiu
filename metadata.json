@@ -1,0 +1,8 @@
+{
+  "name": "Remix: DAMIU Hydro-Monitor",
+  "description": "Efficiently track production, monitor water waste, and optimize performance for refill water systems using automated DMAIC analytics.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
