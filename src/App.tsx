@@ -322,7 +322,7 @@ export default function App() {
       wasted_liter: reportData.wastedLiter,
       waste_percent: reportData.wastePercent,
       status: reportData.status,
-      approved: reportToEdit ? reportToEdit.approved : (user?.role === "admin"),
+      approved: true,
       created_at: reportToEdit ? reportToEdit.createdAt : new Date().toISOString()
     };
 

@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { UserProfile } from "../types";
-import { Search, UserCheck, Shield, Trash2, Users, AlertTriangle, Key } from "lucide-react";
+import { Search, UserCheck, Shield, Trash2, Users, AlertTriangle, Key, X } from "lucide-react";
 import { supabase } from "../supabase";
 
 interface UserManagementProps {
@@ -114,24 +114,57 @@ export default function UserManagement({ users, currentUser, onRefresh }: UserMa
   /**
    * Mengirimkan instruksi pemulihan atur ulang kata sandi ke email pengguna target menggunakan Supabase Auth.
    */
-  const handleResetPassword = async (targetUser: UserProfile) => {
-    setLoadingId(targetUser.uid);
+  const [resetPasswordUser, setResetPasswordUser] = useState<UserProfile | null>(null);
+  const [newPassword, setNewPassword] = useState("");
+  const [showResetModal, setShowResetModal] = useState(false);
+
+  /**
+   * Membuka modal atur ulang kata sandi langsung oleh Administrator.
+   */
+  const handleOpenResetModal = (targetUser: UserProfile) => {
+    if (currentUser.role !== "admin") {
+      setError("Akses ditolak: Hanya administrator yang dapat mengatur ulang kata sandi.");
+      return;
+    }
+    setResetPasswordUser(targetUser);
+    setNewPassword("");
+    setShowResetModal(false); // Reset just in case
+    setTimeout(() => {
+      setShowResetModal(true);
+    }, 50);
+  };
+
+  /**
+   * Menyimpan kata sandi baru secara langsung ke akun pengguna target menggunakan Supabase Auth Admin.
+   */
+  const handleSaveNewPassword = async () => {
+    if (!resetPasswordUser) return;
+    if (newPassword.trim().length < 6) {
+      setError("Password minimal harus 6 karakter.");
+      return;
+    }
+
+    setLoadingId(resetPasswordUser.uid);
     setError("");
     setSuccessMsg("");
     try {
-      const { error: resetError } = await supabase.auth.resetPasswordForEmail(targetUser.email, {
-        redirectTo: window.location.origin
+      const { error: resetError } = await supabase.auth.admin.updateUserById(resetPasswordUser.uid, {
+        password: newPassword
       });
+
       if (resetError) {
         throw resetError;
       }
-      setSuccessMsg(`Tautan atur ulang kata sandi berhasil dikirim ke email: ${targetUser.email}`);
+      setSuccessMsg(`Kata sandi untuk ${resetPasswordUser.name} berhasil diubah secara langsung.`);
+      setShowResetModal(false);
+      setResetPasswordUser(null);
+      setNewPassword("");
       
       // Menghilangkan pesan sukses secara otomatis setelah 6 detik
       setTimeout(() => setSuccessMsg(""), 6000);
     } catch (err: any) {
       console.error(err);
-      setError(`Gagal mengirim email reset kata sandi: ${err.message || "Kesalahan jaringan."}`);
+      setError(`Gagal mengubah kata sandi secara langsung: ${err.message || "Kesalahan jaringan."}`);
     } finally {
       setLoadingId(null);
     }
@@ -291,9 +324,9 @@ export default function UserManagement({ users, currentUser, onRefresh }: UserMa
                             {/* Tombol Reset Kata Sandi */}
                             <button
                               disabled={loadingId !== null}
-                              onClick={() => handleResetPassword(u)}
+                              onClick={() => handleOpenResetModal(u)}
                               className="flex items-center gap-1 py-1.5 px-3 rounded-xl text-[10px] font-bold border border-slate-200 bg-white hover:bg-slate-50 text-slate-600 transition-all cursor-pointer shadow-xs"
-                              title="Kirim email untuk mereset kata sandi petugas"
+                              title="Ubah kata sandi petugas secara langsung"
                             >
                               <Key className="w-3 h-3 text-slate-400" />
                               <span>Reset Sandi</span>
@@ -415,9 +448,9 @@ export default function UserManagement({ users, currentUser, onRefresh }: UserMa
                         {/* Tombol Reset Kata Sandi */}
                         <button
                           disabled={loadingId !== null}
-                          onClick={() => handleResetPassword(u)}
+                          onClick={() => handleOpenResetModal(u)}
                           className="flex items-center gap-1 py-1.5 px-3 rounded-xl text-[10px] font-bold border border-slate-200 bg-white hover:bg-slate-50 text-slate-600 transition-all cursor-pointer shadow-xs"
-                          title="Kirim email untuk mereset kata sandi petugas"
+                          title="Ubah kata sandi petugas secara langsung"
                         >
                           <Key className="w-3 h-3 text-slate-400" />
                           <span>Reset Sandi</span>
@@ -470,6 +503,82 @@ export default function UserManagement({ users, currentUser, onRefresh }: UserMa
           </p>
         </div>
       </div>
+
+      {/* Modal Ubah Password Langsung */}
+      {showResetModal && resetPasswordUser && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-xs p-4 animate-fade-in">
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-xl max-w-md w-full overflow-hidden p-6 relative animate-scale-in">
+            {/* Modal Header */}
+            <div className="flex items-start justify-between mb-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-amber-50 text-amber-600 border border-amber-100 rounded-xl">
+                  <Key className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-display font-extrabold text-slate-900 text-sm tracking-tight">Ubah Password Pengguna</h3>
+                  <p className="text-[10px] text-slate-400 font-bold mt-0.5">{resetPasswordUser.name} ({resetPasswordUser.email})</p>
+                </div>
+              </div>
+              <button 
+                onClick={() => {
+                  setShowResetModal(false);
+                  setResetPasswordUser(null);
+                  setNewPassword("");
+                }}
+                className="p-1 hover:bg-slate-100 rounded-lg text-slate-400 hover:text-slate-600 transition-colors cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="space-y-4">
+              <div>
+                <label className="block text-[11px] font-extrabold text-slate-500 uppercase tracking-wider mb-1.5">
+                  Password Baru
+                </label>
+                <input
+                  type="password"
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  placeholder="Masukkan minimal 6 karakter..."
+                  className="w-full bg-slate-50 border border-slate-200/80 rounded-xl px-3.5 py-2.5 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:bg-white focus:border-teal-500 transition-all font-semibold shadow-xs"
+                  required
+                  autoFocus
+                />
+              </div>
+
+              <div className="p-3 bg-amber-50/50 border border-amber-100 rounded-xl flex gap-2.5">
+                <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
+                <p className="text-[10px] text-amber-700 leading-relaxed font-semibold">
+                  Password akan langsung diubah di sistem otentikasi tanpa mengirim email konfirmasi ke pengguna. Beritahukan password baru ini kepada pengguna setelah diubah.
+                </p>
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="flex items-center justify-end gap-2.5 mt-5 pt-4 border-t border-slate-100">
+              <button
+                onClick={() => {
+                  setShowResetModal(false);
+                  setResetPasswordUser(null);
+                  setNewPassword("");
+                }}
+                className="px-4 py-2 text-xs font-bold text-slate-500 hover:bg-slate-50 border border-slate-200 rounded-xl transition-all cursor-pointer"
+              >
+                Batal
+              </button>
+              <button
+                disabled={loadingId !== null || newPassword.trim().length < 6}
+                onClick={handleSaveNewPassword}
+                className="px-4 py-2 text-xs font-extrabold text-white bg-teal-600 hover:bg-teal-700 disabled:opacity-50 disabled:cursor-not-allowed rounded-xl transition-all cursor-pointer shadow-sm shadow-teal-600/10"
+              >
+                {loadingId !== null ? "Menyimpan..." : "Simpan Password"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

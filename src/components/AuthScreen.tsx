@@ -146,9 +146,9 @@ export default function AuthScreen({ onLocalLogin }: AuthScreenProps) {
         errMsg.includes("invalid-email") ||
         errMsg.includes("invalid login credentials")
       ) {
-        setError("Kredensial login salah (Invalid login credentials). Silakan periksa kembali.");
+        setError("Password atau email nya salah. Silakan periksa kembali.");
       } else {
-        setError("Gagal masuk. Password salah atau email tidak terdaftar. Silakan hubungi admin.");
+        setError("Gagal masuk. Password atau email nya salah. Silakan periksa kembali.");
       }
     } finally {
       setLoading(false);
