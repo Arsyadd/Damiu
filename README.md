@@ -1,4 +1,4 @@
-# Remix: DAMIU Hydro-Monitor
+DAMIU Hydro-Monitor
 
 DAMIU Hydro-Monitor adalah platform manajemen dan pemantauan sistem pengisian ulang air minum (depo air minum) berbasis web. Aplikasi ini dirancang untuk melacak volume produksi, mengukur persentase air yang terbuang (waste), serta memfasilitasi peningkatan kualitas berkelanjutan dengan metodologi **DMAIC** (Define, Measure, Analyze, Improve, Control).
 
@@ -89,6 +89,7 @@ Buat file bernama `.env` di direktori utama (root) proyek dan tambahkan detail k
 ```env
 VITE_SUPABASE_URL=your_supabase_project_url
 VITE_SUPABASE_ANON_KEY=your_supabase_anon_public_key
+GEMINI_API_KEY=your_gemini_api_key
 ```
 
 ### 4. Menjalankan Aplikasi di Mode Pengembangan
