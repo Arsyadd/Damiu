@@ -1,5 +1,5 @@
 -- =========================================================================
--- SQL SETUP UNTUK DATABASE SUPABASE / POSTGRESQL
+-- SQL SETUP UNTUK DATABASE SUPABASE
 -- Aplikasi: DAMIU Health Water (Pemantauan Produksi & Waste Air Minum)
 -- =========================================================================
 -- 
