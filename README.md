@@ -41,7 +41,7 @@ DAMIU Health Water adalah platform manajemen dan pemantauan sistem pengisian ula
 * **Styling**: Tailwind CSS untuk antarmuka modern yang responsif, dikombinasikan dengan pustaka animasi `motion/react`.
 * **Icons**: Lucide React.
 * **Grafik & Data**: Recharts untuk visualisasi data analitik produksi.
-* **Database & Otentikasi**: Supabase (PostgreSQL) sebagai penyedia backend-as-a-service yang menangani otentikasi pengguna, penyimpanan profil, dan tabel data laporan.
+* **Database & Otentikasi**: Supabase (SQL) sebagai penyedia backend-as-a-service yang menangani otentikasi pengguna, penyimpanan profil, dan tabel data laporan.
 
 ---
 
