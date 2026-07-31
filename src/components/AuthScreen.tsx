@@ -16,7 +16,7 @@ const isAdminEmail = (email: string) => {
 /**
  * Komponen AuthScreen - Mengelola masuk log (Login) dan pendaftaran akun (SignUp) petugas DAMIU.
  * Sesuai Permintaan User:
- * 1. Tidak menampilkan pesan error teknis Firebase yang membingungkan. Jika password salah, tampilkan pesan sederhana berbahasa Indonesia.
+ * 1. Tidak menampilkan pesan error teknis yang membingungkan. Jika password salah, tampilkan pesan sederhana berbahasa Indonesia.
  * 2. Menambahkan pengingat di halaman login untuk menghubungi Administrator jika lupa kata sandi.
  * 3. Mengurangi penggunaan ikon yang berlebihan, serta menghilangkan ikon pada tombol Masuk dengan Google.
  * 4. Bebas dari penyebutan kata "depot".
@@ -224,12 +224,12 @@ export default function AuthScreen({ onLocalLogin }: AuthScreenProps) {
               
               {authInstructionType === "email" && (
                 <div className="mt-2.5 p-3 bg-slate-900/80 border border-slate-700/50 rounded-lg space-y-2.5 text-[11px] text-slate-300">
-                  <p className="font-bold text-teal-400 uppercase tracking-wider text-[9px]">💡 Instruksi Mengaktifkan Firebase Auth:</p>
+                  <p className="font-bold text-teal-400 uppercase tracking-wider text-[9px]">💡 Instruksi Mengaktifkan Supabase Auth:</p>
                   <ol className="list-decimal list-inside space-y-1 font-sans text-slate-400">
-                    <li>Buka <a href="https://console.firebase.google.com/" target="_blank" rel="noopener noreferrer" className="text-teal-400 hover:underline font-semibold">Firebase Console</a></li>
-                    <li>Navigasi ke menu <span className="font-semibold text-white">Authentication</span></li>
-                    <li>Pilih tab <span className="font-semibold text-white">Sign-in method</span></li>
-                    <li>Aktifkan penyedia <span className="font-bold text-teal-400">Email/Password</span> dan klik Simpan</li>
+                    <li>Buka <a href="https://supabase.com/dashboard" target="_blank" rel="noopener noreferrer" className="text-teal-400 hover:underline font-semibold">Supabase Dashboard</a></li>
+                    <li>Navigasi ke menu <span className="font-semibold text-white">Authentication &gt; Providers</span></li>
+                    <li>Pilih opsi <span className="font-semibold text-white">Email</span></li>
+                    <li>Pastikan <span className="font-bold text-teal-400">Enable Email Signup</span> diaktifkan dan klik Save</li>
                   </ol>
                   <div className="pt-2 border-t border-slate-800 flex justify-between items-center gap-2">
                     <span className="text-[10px] text-slate-500 font-medium leading-tight">Mencoba demo langsung tanpa konfigurasi?</span>
