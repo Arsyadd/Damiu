@@ -1,4 +1,4 @@
-# Remix: DAMIU Health Water
+DAMIU Health Water
 
 DAMIU Health Water adalah platform manajemen dan pemantauan sistem pengisian ulang air minum (depo air minum) berbasis web. Aplikasi ini dirancang untuk melacak volume produksi, mengukur persentase air yang terbuang (waste), serta memfasilitasi peningkatan kualitas berkelanjutan dengan metodologi **DMAIC** (Define, Measure, Analyze, Improve, Control).
 
