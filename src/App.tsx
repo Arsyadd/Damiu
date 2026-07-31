@@ -470,7 +470,7 @@ export default function App() {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-slate-900 text-teal-400 font-sans">
         <RefreshCw className="w-10 h-10 animate-spin mb-4" />
-        <span className="text-sm font-bold tracking-wider uppercase">Memuat DAMIU Hydro-Monitor...</span>
+        <span className="text-sm font-bold tracking-wider uppercase">Memuat DAMIU Health Water...</span>
       </div>
     );
   }

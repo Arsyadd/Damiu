@@ -39,7 +39,7 @@ interface SidebarProps {
 }
 
 /**
- * Komponen Sidebar - Navigasi utama aplikasi DAMIU Hydro-Monitor.
+ * Komponen Sidebar - Navigasi utama aplikasi DAMIU Health Water.
  * Fitur:
  * 1. Mendukung mode responsif penuh (desktop persisten & mobile slide drawer).
  * 2. Dapat diciutkan (collapsible) oleh pengguna desktop untuk memaksimalkan area kerja.
@@ -179,7 +179,7 @@ export default function Sidebar({
             </div>
             <div className={`transition-all duration-300 ${collapsed ? "md:hidden" : "block"}`}>
               <h1 className="font-display font-extrabold text-sm tracking-wider uppercase bg-gradient-to-r from-teal-400 to-cyan-300 bg-clip-text text-transparent">
-                HYDRO-MONITOR
+                DAMIU HEALTH WATER
               </h1>
               <p className="text-[9px] text-slate-500 tracking-wider uppercase font-medium">
                 SISTEM DAMIU
@@ -266,7 +266,7 @@ export default function Sidebar({
           <div className="flex items-center gap-2">
             <Droplet className="w-5 h-5 text-teal-400 shrink-0" />
             <span className="font-display font-black text-sm tracking-wider uppercase bg-gradient-to-r from-teal-400 to-cyan-300 bg-clip-text text-transparent">
-              HYDRO-MONITOR
+              DAMIU HEALTH WATER
             </span>
           </div>
         </div>

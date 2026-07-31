@@ -184,7 +184,7 @@ export default function AuthScreen({ onLocalLogin }: AuthScreenProps) {
               <div className="p-2.5 bg-white/10 rounded-xl">
                 <Droplet className="w-7 h-7 text-cyan-200 animate-pulse" />
               </div>
-              <span className="font-display font-bold text-xl tracking-wide">DAMIU HYDRO-MONITOR</span>
+              <span className="font-display font-bold text-xl tracking-wide">DAMIU HEALTH WATER</span>
             </div>
             
             <h1 className="font-display font-bold text-3xl md:text-4xl leading-tight mb-4">
